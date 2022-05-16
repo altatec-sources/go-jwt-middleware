@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/routers/gorillamux"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
@@ -20,6 +22,19 @@ type JwtContext struct {
 
 func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		router, err := gorillamux.NewRouter(m.swagger)
+		if err != nil {
+			panic(err)
+		}
+
+		req := c.Request()
+		route, pathParams, err := router.FindRoute(req)
+		fmt.Println(route, pathParams)
+		security := route.Operation.Security
+		if security == nil {
+			return next(c)
+		}
+
 		jws, err := GetJWSFromRequest(c.Request())
 		if err != nil {
 			return m.getHttpError(fmt.Errorf("getting jws: %w", err))
@@ -62,10 +77,11 @@ func (m *JwtValidatorMiddleware) getHttpError(err error) *echo.HTTPError {
 
 type JwtValidatorMiddleware struct {
 	jwtValidator JwtValidatorInterface
+	swagger      *openapi3.T
 }
 
-func NewJwtValidatorMiddleware(jwtValidator JwtValidatorInterface) *JwtValidatorMiddleware {
-	return &JwtValidatorMiddleware{jwtValidator}
+func NewJwtValidatorMiddleware(jwtValidator JwtValidatorInterface, swagger *openapi3.T) *JwtValidatorMiddleware {
+	return &JwtValidatorMiddleware{jwtValidator, swagger}
 }
 
 // GetJWSFromRequest extracts a JWS string from an Authorization: Bearer <jws> header
