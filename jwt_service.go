@@ -20,6 +20,11 @@ type JwtContext struct {
 	Roles      []string
 }
 
+const UniqueName string = "unique_name"
+const EmailHash string = "email_hash"
+const Role string = "role"
+const Unauthorized int = 401
+
 func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		router, err := gorillamux.NewRouter(m.swagger)
@@ -28,8 +33,10 @@ func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.
 		}
 
 		req := c.Request()
-		route, pathParams, err := router.FindRoute(req)
-		fmt.Println(route, pathParams)
+		route, _, err := router.FindRoute(req)
+		if err != nil {
+			return m.getHttpError(fmt.Errorf("undefined route: %w", err), Unauthorized)
+		}
 		security := route.Operation.Security
 		if security == nil {
 			return next(c)
@@ -37,23 +44,23 @@ func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.
 
 		jws, err := GetJWSFromRequest(c.Request())
 		if err != nil {
-			return m.getHttpError(fmt.Errorf("getting jws: %w", err))
+			return m.getHttpError(fmt.Errorf("getting jws: %w", err), Unauthorized)
 		}
 
 		token, err := m.jwtValidator.Validate(jws)
 		if err != nil {
-			return m.getHttpError(fmt.Errorf("failed to validate JWT token: %s\n", err))
+			return m.getHttpError(fmt.Errorf("failed to validate JWT token: %s\n", err), Unauthorized)
 		}
 		uniqueName := ""
-		if val, ok := token.PrivateClaims()["unique_name"]; ok {
+		if val, ok := token.PrivateClaims()[UniqueName]; ok {
 			uniqueName = val.(string)
 		}
 		emailHash := ""
-		if val, ok := token.PrivateClaims()["email_hash"]; ok {
+		if val, ok := token.PrivateClaims()[EmailHash]; ok {
 			emailHash = val.(string)
 		}
 		roles := make([]string, 0)
-		if val, ok := token.PrivateClaims()["role"]; ok {
+		if val, ok := token.PrivateClaims()[Role]; ok {
 			roleClaims := val.([]interface{})
 			for _, v := range roleClaims {
 				roles = append(roles, v.(string))
@@ -62,13 +69,12 @@ func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.
 		cc := &JwtContext{c, token, uniqueName, emailHash, roles}
 		return next(cc)
 	}
-
 }
 
-func (m *JwtValidatorMiddleware) getHttpError(err error) *echo.HTTPError {
+func (m *JwtValidatorMiddleware) getHttpError(err error, code int) *echo.HTTPError {
 	message := fmt.Sprintf("validating JWS: %s", err)
 	httpErr := echo.HTTPError{
-		Code:     401,
+		Code:     code,
 		Message:  message,
 		Internal: err,
 	}
