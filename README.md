@@ -1,20 +1,73 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+#
+Встраиваемый в конвейер echo модуль авторизации для валидации входящих запросов
+Модуль закрытый, для подключения требуются права на доступ в репозиторий git
+Права могут быть выданы через выпуск access-token в TFS.
+#
+Валидация токенов происходит по трем параметрам: 
+- Публичному ключу для проверки цифровой подписи токена. 
+- Issuer
+- Audience
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+#
+Пример конфигурации сервиса, использующего модуль авторизации
+```
+jwt:
+  public_key: |
+    -----BEGIN PUBLIC KEY-----
+    MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35pY9Ig4aK6Qvq0cZMLJOJXit3Jx
+    T2J+iVkAVn1X8f4szENyvvPzWfat5VlNo+lagIww2l/jdAeiCg1sQMAUmQ==
+    -----END PUBLIC KEY-----
+  issuer: 'apps.m-ticket.ru/ra/ru-sak'
+  audience: 'https://apps.m-ticket.ru/ra/ru-sak'
+```
+#
+Генератор спецификации swagger 
+oapi-codegen -generate spec -o openapi_spec.echo.gen.go -package codegen post.yaml. 
+Спецификация используется модулем для пропуска без авторизации публичных запросов 
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+#
+Подключение модуля в конвейер echo. 
+> app.go
+```
+improt (
+...
+PetAuth "tfs.i.altatec.ru/tfs/Altatec/Pets/_git/PetAuth.git"
+...
+)
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+func Run(cfg *config.Config) {
+	...
+	//jwt
+	validator := PetAuth.NewJwtValidator(cfg.PublicKey, cfg.Issuer, cfg.Audience)
+	//codegen swagger 
+	spec, err := codegen.GetSwagger()
+	if err != nil {
+		panic(fmt.Errorf("loading spec: %w", err))
+	}
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+	mw := PetAuth.NewJwtValidatorMiddleware(validator, spec)
+	e.Use(mw.JwtParseMiddleware)
+	...
+	// codegen
+	codegen.RegisterHandlers(e, ps)
+	
+}
+```
+#
+Получение объекта токена авторизации и распарсенных клаймов в пользовательском коде
+>server.go
+```
+improt (
+...
+PetAuth "tfs.i.altatec.ru/tfs/Altatec/Pets/_git/PetAuth.git"
+...
+)
+func (ps *PostServer) PostPost(ctx echo.Context) error {
+
+	cc := ctx.(*PetAuth.JwtContext)
+	token := cc.Token
+	uniqueName := cc.UniqueName
+	emailHash := cc.EmailHash
+	roles := cc.Roles
+```
+
