@@ -4,10 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/routers/gorillamux"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
@@ -25,20 +24,25 @@ const EmailHash string = "email_hash"
 const Role string = "role"
 const Unauthorized int = 401
 
+func contains(s []string, searchterm string) bool {
+	for _, regex := range s {
+		matched, _ := regexp.MatchString(regex, searchterm)
+		if matched {
+			return true
+		}
+	}
+	return false
+}
 func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		router, err := gorillamux.NewRouter(m.swagger)
-		if err != nil {
-			panic(err)
-		}
-
 		req := c.Request()
-		route, _, err := router.FindRoute(req)
-		if err != nil {
-			return m.getHttpError(fmt.Errorf("undefined route: %w", err), Unauthorized)
+		path := req.URL.Path
+		method := req.Method
+		secureMethods, ok := m.routeMap[method]
+		if !ok {
+			return next(c)
 		}
-		security := route.Operation.Security
-		if security == nil {
+		if !contains(secureMethods, path) {
 			return next(c)
 		}
 
@@ -83,11 +87,11 @@ func (m *JwtValidatorMiddleware) getHttpError(err error, code int) *echo.HTTPErr
 
 type JwtValidatorMiddleware struct {
 	jwtValidator JwtValidatorInterface
-	swagger      *openapi3.T
+	routeMap     map[string][]string
 }
 
-func NewJwtValidatorMiddleware(jwtValidator JwtValidatorInterface, swagger *openapi3.T) *JwtValidatorMiddleware {
-	return &JwtValidatorMiddleware{jwtValidator, swagger}
+func NewJwtValidatorMiddleware(jwtValidator JwtValidatorInterface, routeMap map[string][]string) *JwtValidatorMiddleware {
+	return &JwtValidatorMiddleware{jwtValidator, routeMap}
 }
 
 // GetJWSFromRequest extracts a JWS string from an Authorization: Bearer <jws> header
