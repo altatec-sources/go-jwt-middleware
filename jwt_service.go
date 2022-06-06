@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -22,6 +23,7 @@ type JwtContext struct {
 const UniqueName string = "unique_name"
 const EmailHash string = "email_hash"
 const Role string = "role"
+const Anonymous string = "default"
 const Unauthorized int = 401
 
 func contains(s []string, searchterm string) bool {
@@ -63,11 +65,25 @@ func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.
 		if val, ok := token.PrivateClaims()[EmailHash]; ok {
 			emailHash = val.(string)
 		}
+		anonymous := 1
+		if val, ok := token.PrivateClaims()[Anonymous]; ok {
+			if s, ok := val.(string); ok {
+				anonymous, _ = strconv.Atoi(s)
+			}
+		}
+		if anonymous == 1 {
+			err = errors.New("user has no permissions")
+			return m.getHttpError(fmt.Errorf("failed to validate JWT token: %s\n", err), Unauthorized)
+		}
 		roles := make([]string, 0)
 		if val, ok := token.PrivateClaims()[Role]; ok {
-			roleClaims := val.([]interface{})
-			for _, v := range roleClaims {
-				roles = append(roles, v.(string))
+			if roleClaims, ok := val.([]interface{}); ok {
+				for _, v := range roleClaims {
+					roles = append(roles, v.(string))
+				}
+			}
+			if oneRole, ok := val.(string); ok {
+				roles = append(roles, oneRole)
 			}
 		}
 		cc := &JwtContext{c, token, uniqueName, emailHash, roles}

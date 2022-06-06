@@ -20,10 +20,13 @@ jwt:
   issuer: 'apps.m-ticket.ru/ra/ru-sak'
   audience: 'https://apps.m-ticket.ru/ra/ru-sak'
 ```
-#
-Генератор спецификации swagger 
-oapi-codegen -generate spec -o openapi_spec.echo.gen.go -package codegen post.yaml. 
-Спецификация используется модулем для пропуска без авторизации публичных запросов 
+#Спецификация защищенных маршрутов передается в мидлвари в виде коллекции регулярных выражений securutyRoutes:
+```
+securityRoutes := make(map[string][]string)
+	securityRoutes["POST"] = []string{"^/post$","^/comments$"}
+	securityRoutes["PUT"] = []string{"^/post/"}
+	securityRoutes["DELETE"] = []string{"^/post/"}
+```
 
 #
 Подключение модуля в конвейер echo. 
@@ -39,13 +42,9 @@ func Run(cfg *config.Config) {
 	...
 	//jwt
 	validator := PetAuth.NewJwtValidator(cfg.PublicKey, cfg.Issuer, cfg.Audience)
-	//codegen swagger 
-	spec, err := codegen.GetSwagger()
-	if err != nil {
-		panic(fmt.Errorf("loading spec: %w", err))
-	}
 
-	mw := PetAuth.NewJwtValidatorMiddleware(validator, spec)
+
+	mw := PetAuth.NewJwtValidatorMiddleware(validator, securityRoutes)
 	e.Use(mw.JwtParseMiddleware)
 	...
 	// codegen
