@@ -40,55 +40,84 @@ func (m *JwtValidatorMiddleware) JwtParseMiddleware(next echo.HandlerFunc) echo.
 		req := c.Request()
 		path := req.URL.Path
 		method := req.Method
-		secureMethods, ok := m.routeMap[method]
-		if !ok {
-			return next(c)
-		}
-		if !contains(secureMethods, path) {
-			return next(c)
-		}
-
-		jws, err := GetJWSFromRequest(c.Request())
+		secured := m.isTheMethodSecured(method, path)
+		jws, err := m.getJws(c)
 		if err != nil {
-			return m.getHttpError(fmt.Errorf("getting jws: %w", err), Unauthorized)
+			if !secured {
+				return next(c)
+			} else {
+				return m.getHttpError(fmt.Errorf("failed to get JWS: %s\n", err), Unauthorized)
+			}
 		}
-
-		token, err := m.jwtValidator.Validate(jws)
+		token, err := m.getJwtToken(jws)
 		if err != nil {
-			return m.getHttpError(fmt.Errorf("failed to validate JWT token: %s\n", err), Unauthorized)
+			return m.getHttpError(fmt.Errorf("failed to get validate token: %s\n", err), Unauthorized)
 		}
-		uniqueName := ""
-		if val, ok := token.PrivateClaims()[UniqueName]; ok {
-			uniqueName = val.(string)
+		cc, err := m.makeContext(c, token)
+		if err != nil {
+			return m.getHttpError(fmt.Errorf("failed to parse JWT token: %s\n", err), Unauthorized)
 		}
-		emailHash := ""
-		if val, ok := token.PrivateClaims()[EmailHash]; ok {
-			emailHash = val.(string)
-		}
-		anonymous := 1
-		if val, ok := token.PrivateClaims()[Anonymous]; ok {
-			if s, ok := val.(string); ok {
-				anonymous, _ = strconv.Atoi(s)
-			}
-		}
-		if anonymous == 1 {
-			err = errors.New("user has no permissions")
-			return m.getHttpError(fmt.Errorf("failed to validate JWT token: %s\n", err), Unauthorized)
-		}
-		roles := make([]string, 0)
-		if val, ok := token.PrivateClaims()[Role]; ok {
-			if roleClaims, ok := val.([]interface{}); ok {
-				for _, v := range roleClaims {
-					roles = append(roles, v.(string))
-				}
-			}
-			if oneRole, ok := val.(string); ok {
-				roles = append(roles, oneRole)
-			}
-		}
-		cc := &JwtContext{c, token, uniqueName, emailHash, roles}
 		return next(cc)
 	}
+}
+
+func (m *JwtValidatorMiddleware) isTheMethodSecured(method string, path string) bool {
+	secureMethods, ok := m.routeMap[method]
+	if !ok {
+		return false
+	}
+	if !contains(secureMethods, path) {
+		return false
+	}
+	return true
+}
+func (m *JwtValidatorMiddleware) getJwtToken(jws string) (jwt.Token, error) {
+	token, err := m.jwtValidator.Validate(jws)
+	if err != nil {
+		return nil, err
+	}
+	return token, nil
+}
+
+func (m *JwtValidatorMiddleware) getJws(c echo.Context) (string, error) {
+	jws, err := GetJWSFromRequest(c.Request())
+	if err != nil {
+		return "", err
+	}
+	return jws, nil
+}
+func (m *JwtValidatorMiddleware) makeContext(c echo.Context, token jwt.Token) (*JwtContext, error) {
+	uniqueName := ""
+	if val, ok := token.PrivateClaims()[UniqueName]; ok {
+		uniqueName = val.(string)
+	}
+	emailHash := ""
+	if val, ok := token.PrivateClaims()[EmailHash]; ok {
+		emailHash = val.(string)
+	}
+	anonymous := 1
+	if val, ok := token.PrivateClaims()[Anonymous]; ok {
+		if s, ok := val.(string); ok {
+			anonymous, _ = strconv.Atoi(s)
+		}
+	}
+	if anonymous == 1 {
+		err := errors.New("user has no permissions")
+		return nil, err
+	}
+	roles := make([]string, 0)
+	if val, ok := token.PrivateClaims()[Role]; ok {
+		if roleClaims, ok := val.([]interface{}); ok {
+			for _, v := range roleClaims {
+				roles = append(roles, v.(string))
+			}
+		}
+		if oneRole, ok := val.(string); ok {
+			roles = append(roles, oneRole)
+		}
+	}
+	cc := &JwtContext{c, token, uniqueName, emailHash, roles}
+	return cc, nil
 }
 
 func (m *JwtValidatorMiddleware) getHttpError(err error, code int) *echo.HTTPError {

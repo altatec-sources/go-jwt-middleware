@@ -62,11 +62,13 @@ PetAuth "tfs.i.altatec.ru/tfs/Altatec/Pets/_git/PetAuth.git"
 ...
 )
 func (ps *PostServer) PostPost(ctx echo.Context) error {
+	cc, ok := ctx.(*PetAuth.JwtContext)
+	if ok {
+		token := cc.Token
+		uniqueName := cc.UniqueName
+		emailHash := cc.EmailHash
+		roles := cc.Roles
+	}
 
-	cc := ctx.(*PetAuth.JwtContext)
-	token := cc.Token
-	uniqueName := cc.UniqueName
-	emailHash := cc.EmailHash
-	roles := cc.Roles
 ```
 
