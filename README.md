@@ -34,7 +34,7 @@ securityRoutes := make(map[string][]string)
 ```
 improt (
 ...
-PetAuth "tfs.i.altatec.ru/tfs/Altatec/Pets/_git/PetAuth.git"
+PetAuth "https://github.com/altatec-sources/go-jwt-middleware"
 ...
 )
 
@@ -58,7 +58,7 @@ func Run(cfg *config.Config) {
 ```
 improt (
 ...
-PetAuth "tfs.i.altatec.ru/tfs/Altatec/Pets/_git/PetAuth.git"
+PetAuth "https://github.com/altatec-sources/go-jwt-middleware"
 ...
 )
 func (ps *PostServer) PostPost(ctx echo.Context) error {
