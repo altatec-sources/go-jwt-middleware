@@ -1,4 +1,4 @@
-module github.com/AlexeyVasiliev/petauth
+module github.com/altatec-sources/go-jwt-middleware
 
 go 1.18
 
