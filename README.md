@@ -5,24 +5,36 @@
 Открытые методы доступны без авторизации, но если в запросе к открытым методам представлен JWT токен он будет также провалидирован.
 
 #
-Валидация токенов происходит по трем параметрам: 
-- Публичному ключу для проверки цифровой подписи токена. 
-- Issuer
-- Audience
+Валидация токенов происходит по issuer из токена (`iss`):
+- из payload токена извлекается `iss` без криптографической проверки только для выбора ключа;
+- выбирается конфигурация с соответствующим issuer;
+- выполняется полная проверка подписи, issuer и audience выбранным ключом;
+- claims из unverified parse не считаются доверенными.
+
+Поддерживаются два способа инициализации валидатора:
+- `NewJwtValidator(publicKey, issuer, audience)` — legacy-конструктор для одного ключа;
+- `NewJwtValidatorFromConfigs([]IssuerConfig)` — конструктор для нескольких ключей.
+
+Правила обработки массива ключей:
+- при дубликате `issuer` используется последний элемент (`overwrite`);
+- записи с пустым `issuer` или `public_key` игнорируются;
+- если после фильтрации не осталось валидных ключей, конструктор возвращает ошибку.
 
 #
 Пример конфигурации сервиса, использующего модуль авторизации
 ```
 jwt:
-  public_key: |
-    -----BEGIN PUBLIC KEY-----
-    MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35pY9Ig4aK6Qvq0cZMLJOJXit3Jx
-    T2J+iVkAVn1X8f4szENyvvPzWfat5VlNo+lagIww2l/jdAeiCg1sQMAUmQ==
-    -----END PUBLIC KEY-----
-  issuer: 'apps.m-ticket.ru/ra/ru-sak'
-  audience: 'https://apps.m-ticket.ru/ra/ru-sak'
+  keys:
+    - issuer: 'apps.moby.city'
+      public_key: |
+        -----BEGIN PUBLIC KEY-----
+        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35pY9Ig4aK6Qvq0cZMLJOJXit3Jx
+        T2J+iVkAVn1X8f4szENyvvPzWfat5VlNo+lagIww2l/jdAeiCg1sQMAUmQ==
+        -----END PUBLIC KEY-----
+      audience: 'https://apps.moby.city'
 ```
-#Спецификация защищенных маршрутов передается в мидлвари в виде коллекции регулярных выражений securutyRoutes:
+
+# Спецификация защищенных маршрутов передается в мидлвари в виде коллекции регулярных выражений securutyRoutes:
 ```
 securityRoutes := make(map[string][]string)
 	securityRoutes["POST"] = []string{"^/post$","^/comments$"}
@@ -31,20 +43,26 @@ securityRoutes := make(map[string][]string)
 ```
 
 #
-Подключение модуля в конвейер echo. 
+Подключение модуля в конвейер echo.
 > app.go
 ```
-improt (
+import (
 ...
-PetAuth "https://github.com/altatec-sources/go-jwt-middleware"
+PetAuth "github.com/altatec-sources/go-jwt-middleware"
 ...
 )
 
 func Run(cfg *config.Config) {
 	...
-	//jwt
-	validator := PetAuth.NewJwtValidator(cfg.PublicKey, cfg.Issuer, cfg.Audience)
+	issuerConfigs, err := cfg.BuildJwtIssuerConfigs()
+	if err != nil {
+		panic(err)
+	}
 
+	validator, err := PetAuth.NewJwtValidatorFromConfigs(issuerConfigs)
+	if err != nil {
+		panic(err)
+	}
 
 	mw := PetAuth.NewJwtValidatorMiddleware(validator, securityRoutes)
 	e.Use(mw.JwtParseMiddleware)
@@ -54,13 +72,19 @@ func Run(cfg *config.Config) {
 	
 }
 ```
+
+Legacy-инициализация для одного ключа:
+```
+validator := PetAuth.NewJwtValidator(cfg.PublicKey, cfg.Issuer, cfg.Audience)
+```
+
 #
 Получение объекта токена авторизации и распарсенных клаймов в пользовательском коде
 >server.go
 ```
-improt (
+import (
 ...
-PetAuth "https://github.com/altatec-sources/go-jwt-middleware"
+PetAuth "github.com/altatec-sources/go-jwt-middleware"
 ...
 )
 func (ps *PostServer) PostPost(ctx echo.Context) error {
@@ -73,4 +97,3 @@ func (ps *PostServer) PostPost(ctx echo.Context) error {
 	}
 
 ```
-
