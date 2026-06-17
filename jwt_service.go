@@ -95,14 +95,14 @@ func (m *JwtValidatorMiddleware) makeContext(c echo.Context, token jwt.Token) (*
 	if val, ok := token.PrivateClaims()[EmailHash]; ok {
 		emailHash = val.(string)
 	}
-	anonymous := 1
+	anonymous := 0
 	if val, ok := token.PrivateClaims()[Anonymous]; ok {
 		if s, ok := val.(string); ok {
 			anonymous, _ = strconv.Atoi(s)
 		}
 	}
 	if anonymous == 1 {
-		err := errors.New("user has no permissions")
+		err := errors.New("anonymous user has no permissions")
 		return nil, err
 	}
 	roles := make([]string, 0)
